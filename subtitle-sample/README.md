@@ -32,7 +32,7 @@ libass 的碰撞框还会把描边算进去（5 + 3），所以实际重叠 **23
 本样例把日文事件放在 `Layer 1`、中文放在 `Layer 0`，两者各自按 MarginV 定位，才是“中文在上、日文在下”的效果。
 实际做字幕时，请用同样的分层；或者把 Default 的 MarginV 调到 **≥ 123**（用 libass 实测：122 仍会被顶上去，123 起日文留在下方），但这样中文会整体上移 23 px。
 
-此外，按这组边距，中文行里拉丁字母的下伸部分（如 `p`、`g`）离日文行只有几个像素，见 `preview/04_21s.png`。
+此外，按这组边距，中文行里拉丁字母的下伸部分（如 `p`、`g`）离日文行只有几个像素，见 `preview/05_21s.jpg`。
 
 ## 字体来源
 
@@ -45,7 +45,7 @@ libass 的碰撞框还会把描边算进去（5 + 3），所以实际重叠 **23
 ```bash
 pip install fonttools skia-pathops
 ./build_fonts.sh     # 下载并生成两款字体，装到 ~/.fonts
-./render.sh          # 输出 subtitle_sample_2160p.mp4 和 preview/*.png
+./render.sh          # 输出 subtitle_sample_2160p.mp4 和 preview/*.jpg
 ```
 
 `render.sh` 运行时，ffmpeg 日志里应能看到两行 `fontselect`，确认没有回退到其他字体：

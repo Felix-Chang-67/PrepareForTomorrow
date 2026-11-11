@@ -24,6 +24,6 @@ mkdir -p preview
 i=1
 for t in 2.5 7 11.5 16.25 21 25.5 30.5; do
   ffmpeg -hide_banner -v error -y -ss "$t" -i "$OUT" -frames:v 1 \
-    "preview/$(printf '%02d' "$i")_${t}s.png"
+    -q:v 2 "preview/$(printf '%02d' "$i")_${t}s.jpg"
   i=$((i + 1))
 done
