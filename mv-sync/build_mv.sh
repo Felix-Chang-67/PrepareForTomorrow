@@ -42,9 +42,20 @@ if [ "$MODE" = "soft" ]; then
     -metadata:s:s:0 language=chi -metadata:s:s:0 title="中日双语" -disposition:s:0 default \
     "${ATTACH[@]}" "$OUT"
 else
-  read -r PIXFMT CSPACE CPRIM CTRC CRANGE < <(ffprobe -v error -select_streams v:0 \
+  # ffprobe 的输出顺序不随请求顺序变化，所以按“键=值”逐项读取
+  PIXFMT=yuv420p CSPACE= CPRIM= CTRC= CRANGE=
+  while IFS='=' read -r key val; do
+    case "$key" in
+      pix_fmt) PIXFMT="$val" ;;
+      color_space) CSPACE="$val" ;;
+      color_primaries) CPRIM="$val" ;;
+      color_transfer) CTRC="$val" ;;
+      color_range) CRANGE="$val" ;;
+    esac
+  done < <(ffprobe -v error -select_streams v:0 \
     -show_entries stream=pix_fmt,color_space,color_primaries,color_transfer,color_range \
-    -of csv=p=0 "$MV" | tr ',' ' ')
+    -of default=nw=1 "$MV")
+  echo "源视频：pix_fmt=$PIXFMT colorspace=$CSPACE primaries=$CPRIM trc=$CTRC range=$CRANGE" >&2
   COLOR=()
   [ -n "${CSPACE:-}" ] && [ "$CSPACE" != "unknown" ] && COLOR+=(-colorspace "$CSPACE")
   [ -n "${CPRIM:-}" ] && [ "$CPRIM" != "unknown" ] && COLOR+=(-color_primaries "$CPRIM")
