@@ -78,3 +78,14 @@ CROP=3840:1600:0:280 PRESET=medium BITRATE=100000 ./build_mv.sh MV.mp4 lyrics_mv
 | C：剪掉人声段 20–25 s | 两段 0 / −5 s，剪辑点 20.00 / 25.00 s | 删除 2 句（整句被剪）+ 2 句（只剩 0.14 s），2 句从剪辑点开始 | 逐采样一致 |
 
 合成到 MKV（软字幕）和 MOV（硬字幕）之后，测试 A 的歌曲部分（167 s）在成片 PCM 音轨里仍与原始 24-bit WAV 逐采样一致。
+
+## 上传到 gofile
+
+直接匿名上传（`POST https://upload.gofile.io/uploadfile`，不带凭证）时，大文件曾返回 `HTTP 500 error-createFolderResponse`。改成下面的流程后成功：
+
+1. `POST https://api.gofile.io/accounts`：创建访客账号，得到 `token` 和 `rootFolder`；
+2. `POST https://api.gofile.io/contents/createFolder`（`Authorization: Bearer <token>`，`{"parentFolderId": rootFolder}`）：建一个文件夹，得到分享码；
+3. `POST https://upload.gofile.io/uploadfile`（同一个 token，表单字段 `folderId` + `file`）：上传，返回值里有 `md5`，可与本地 `md5sum` 比对；
+4. `PUT https://api.gofile.io/contents/<folderId>/update`，`{"attribute":"public","attributeValue":"true"}`：把文件夹设为公开。分享链接为 `https://gofile.io/d/<分享码>`。
+
+token 是管理（删除）这次上传的凭证，只保存在本地，不要提交进仓库。访客账号里的文件长期没人下载可能会被 gofile 清理。
