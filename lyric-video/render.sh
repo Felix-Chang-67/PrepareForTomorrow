@@ -10,8 +10,18 @@ mkdir -p "$OUT_DIR"
 
 DUR=$(ffprobe -v error -select_streams a:0 -show_entries format=duration -of csv=p=0 "$AUDIO")
 
+# 设置 VOCAL_MODEL（Demucs htdemucs_ft 的 04573f0d-f3cf25b2.th）后，按人声判断每句唱完的时间
+VOCAL_ARGS=()
+if [ -n "${VOCAL_MODEL:-}" ]; then
+  if [ ! -f "$OUT_DIR/vocals_env.npz" ]; then
+    python3 "$HERE/detect_vocals.py" "$AUDIO" --model "$VOCAL_MODEL" -o "$OUT_DIR/vocals_env.npz"
+  fi
+  VOCAL_ARGS=(--vocal-env "$OUT_DIR/vocals_env.npz")
+fi
+
 python3 "$HERE/lrc2ass.py" "$LRC" -o "$OUT_DIR/lyrics.ass" \
-  --extra-zh "$HERE/extra_zh.tsv" --end "$DUR" ${TITLE_TOP:+--title "$TITLE_TOP" "$TITLE_BOTTOM"}
+  --extra-zh "$HERE/extra_zh.tsv" --end "$DUR" "${VOCAL_ARGS[@]}" \
+  ${TITLE_TOP:+--title "$TITLE_TOP" "$TITLE_BOTTOM"}
 
 python3 "$HERE/make_background.py" "$COVER" -o "$OUT_DIR/background.png"
 
