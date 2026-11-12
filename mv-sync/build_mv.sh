@@ -5,7 +5,11 @@
 #   音轨写 "-" 表示不移植 Hi-Res，把 MV 原音轨重采样到 48 kHz（soxr）后转成 24-bit PCM
 #   音轨统一输出为 PCM 24-bit / 48 kHz（MKV: A_PCM/INT/LIT，MOV: lpcm）；MP4 不支持 PCM，故不提供
 #   soft（默认）：MKV，视频流原样拷贝（画质零损失），ASS 字幕轨 + 附带字体，需播放器支持 ASS（mpv / MPC / PotPlayer 等）
-#   hard        ：字幕烧录进画面，视频重新编码（H.264 CRF 16，保留原分辨率/帧率/色彩参数/位深），输出 .mkv 或 .mov
+#   hard        ：字幕烧录进画面，视频重新编码（H.264，保留原帧率/色彩参数/位深），输出 .mkv 或 .mov
+#
+# 环境变量（hard 模式）：
+#   CROP=w:h:x:y   先裁切（例如去黑边 CROP=3840:1600:0:280），再烧字幕；字幕的 PlayRes 应设为裁切后尺寸
+#   PRESET / CRF   x264 预设与质量，默认 slow / 16；另外固定开启 aq-mode 3（暗部多分配码率，减少色带）
 set -euo pipefail
 
 MV="$1"; ASS="$2"; AUDIO="$3"; OUT="$4"; MODE="${5:-soft}"
@@ -46,9 +50,11 @@ else
   [ -n "${CPRIM:-}" ] && [ "$CPRIM" != "unknown" ] && COLOR+=(-color_primaries "$CPRIM")
   [ -n "${CTRC:-}" ] && [ "$CTRC" != "unknown" ] && COLOR+=(-color_trc "$CTRC")
   [ -n "${CRANGE:-}" ] && [ "$CRANGE" != "unknown" ] && COLOR+=(-color_range "$CRANGE")
+  VF="ass='${ASS//\'/\\\'}'"
+  [ -n "${CROP:-}" ] && VF="crop=${CROP},${VF}"
   ffmpeg -hide_banner -y -i "$MV" "${AIN[@]}" \
-    -filter_complex "[0:v]ass='${ASS//\'/\\\'}'[v]" -map "[v]" "${AMAP[@]}" \
-    -c:v libx264 -preset slow -crf 16 -pix_fmt "$PIXFMT" "${COLOR[@]}" \
+    -filter_complex "[0:v]${VF}[v]" -map "[v]" "${AMAP[@]}" \
+    -c:v libx264 -preset "${PRESET:-slow}" -crf "${CRF:-16}" -aq-mode 3 -pix_fmt "$PIXFMT" "${COLOR[@]}" \
     "${ACODEC[@]}" $(case "$OUT" in *.mov) echo -movflags +faststart ;; esac) "$OUT"
 fi
 
