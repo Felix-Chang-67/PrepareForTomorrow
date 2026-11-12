@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""把音频版的 Hi-Res 音轨按 align_audio.py 的结果移植到 MV 时间轴，输出 24-bit FLAC。
+"""把音频版的 Hi-Res 音轨按 align_audio.py 的结果移植到 MV 时间轴，输出 24-bit / 48 kHz。
 
-  python3 transplant_audio.py mv.mp4 ref.wav align.json -o hires.flac [--keep-mv 0-12.5,200-210]
+  python3 transplant_audio.py mv.mp4 ref.wav align.json -o hires.wav [--keep-mv 0-12.5,200-210]
+
+  输出扩展名 .wav → 24-bit PCM（pcm_s24le）；.flac → 24-bit FLAC（无损压缩，解码后与 PCM 完全相同）。
 
   * 歌曲部分直接逐采样拷贝参考音频（偏移取整到采样），不做任何增益或重采样处理；
   * MV 独有的部分（片头片尾、插入内容）保留 MV 原音轨，并按 align 的电平差调到与参考一致；
@@ -110,8 +112,12 @@ def main():
               "可加 --no-gain-match 或用 --keep-mv 调整", file=sys.stderr)
         out = np.clip(out, -1.0, 1.0)
 
+    if args.output.lower().endswith(".flac"):
+        codec = ["-c:a", "flac", "-sample_fmt", "s32", "-bits_per_raw_sample", "24"]
+    else:
+        codec = ["-c:a", "pcm_s24le"]
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "f32le", "-ar", str(SR), "-ac", "2", "-i", "-",
-                    "-c:a", "flac", "-sample_fmt", "s32", "-bits_per_raw_sample", "24", args.output],
+                    *codec, args.output],
                    input=out.astype(np.float32).tobytes(), check=True)
 
     # ---- 报告 ----

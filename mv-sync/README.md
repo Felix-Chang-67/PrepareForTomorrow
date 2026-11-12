@@ -2,6 +2,13 @@
 
 把为音频版（Hi-Res WAV）做好的歌词字幕和音轨，对齐到 MV 的时间轴上。MV 的音乐起点可以和音频版不同，中间如果有剪辑或插入内容也能处理。
 
+**成片音轨一律输出为 24-bit / 48 kHz PCM**：
+
+- 能移植时，歌曲部分就是音频版 WAV 的原始采样，逐采样一致。
+- 不能移植时（例如 MV 用了不同混音），把 MV 原音轨用 soxr 重采样到 48 kHz 后转成 24-bit PCM。这只统一了格式，有损压缩的音质不会因此变好。
+
+MP4 不支持 PCM，所以成片容器用 MKV 或 MOV。
+
 ## 流程
 
 ```bash
@@ -18,14 +25,14 @@ python3 align_audio.py song.wav MV.mp4 -o align.json
 # 3. 字幕平移到 MV 时间轴
 python3 retime_ass.py ../lyric-video/output/lyrics.ass align.json -o lyrics_mv.ass
 
-# 4. Hi-Res 音轨移植（可选）
-python3 transplant_audio.py MV.mp4 song.wav align.json -o hires_mv.flac [--keep-mv 起-止,…]
+# 4. Hi-Res 音轨移植（24-bit / 48 kHz PCM WAV）
+python3 transplant_audio.py MV.mp4 song.wav align.json -o hires_mv.wav [--keep-mv 起-止,…]
 
 # 5. 合成
-./build_mv.sh MV.mp4 lyrics_mv.ass hires_mv.flac MV_字幕.mkv soft   # 软字幕，视频零损失
-./build_mv.sh MV.mp4 lyrics_mv.ass hires_mv.flac MV_字幕.mkv hard   # 硬字幕 + FLAC
-./build_mv.sh MV.mp4 lyrics_mv.ass hires_mv.flac MV_字幕.mp4 hard   # 硬字幕 + ALAC
-./build_mv.sh MV.mp4 lyrics_mv.ass - MV_字幕.mkv soft                # 不移植，保留 MV 原音
+./build_mv.sh MV.mp4 lyrics_mv.ass hires_mv.wav MV_字幕.mkv soft   # 软字幕，视频零损失
+./build_mv.sh MV.mp4 lyrics_mv.ass hires_mv.wav MV_字幕.mkv hard   # 硬字幕
+./build_mv.sh MV.mp4 lyrics_mv.ass hires_mv.wav MV_字幕.mov hard   # 硬字幕，MOV 容器
+./build_mv.sh MV.mp4 lyrics_mv.ass - MV_字幕.mkv soft               # 不移植：MV 原音转 24/48 PCM
 ```
 
 ## 各步骤说明
@@ -42,7 +49,7 @@ python3 transplant_audio.py MV.mp4 song.wav align.json -o hires_mv.flac [--keep-
 - 跨越剪辑点的字幕裁到剪辑点为止；裁完不足 0.5 秒的也删除。
 - 每一处改动都会打印出来。
 
-**`transplant_audio.py`**：输出 24-bit / 48 kHz FLAC。
+**`transplant_audio.py`**：输出 24-bit / 48 kHz，扩展名为 `.wav` 时是 PCM，为 `.flac` 时是 FLAC。
 
 - **歌曲部分**：参考音频逐采样原样拷贝，偏移取整到采样，不做增益、不重采样、不加抖动。
 - **MV 独有部分**（片头片尾、插入段）：保留 MV 原音，并按电平差调到与 Hi-Res 一致。
@@ -51,8 +58,9 @@ python3 transplant_audio.py MV.mp4 song.wav align.json -o hires_mv.flac [--keep-
 
 **`build_mv.sh`**
 
+- **音轨**：一律输出 `pcm_s24le` 48 kHz。输入已经是 48 kHz 时不做任何处理，直接逐采样通过。
 - **soft 模式**：MKV，视频流原样拷贝，ASS 字幕轨附带两款字体。需要支持 ASS 的播放器，例如 mpv、MPC-HC、PotPlayer、IINA。
-- **hard 模式**：字幕烧录进画面，用 x264 CRF 16 重新编码，保留原分辨率、帧率、位深和色彩参数。字幕是按 3840×2160 设计的（PlayRes 3840×2160），MV 是 1080p 等其他分辨率时，libass 会自动等比缩放。
+- **hard 模式**：字幕烧录进画面，用 x264 CRF 16 重新编码，保留原分辨率、帧率、位深和色彩参数，可输出 MKV 或 MOV。字幕是按 3840×2160 设计的（PlayRes 3840×2160），MV 是 1080p 等其他分辨率时，libass 会自动等比缩放。
 
 ## 测试
 
@@ -63,3 +71,5 @@ python3 transplant_audio.py MV.mp4 song.wav align.json -o hires_mv.flac [--keep-
 | A：加 6.4 s 片头、3 s 片尾，−2 dB，50–51 s 叠音效 | 偏移 +6.4000 s，−2.06 dB，漂移 −0.1 ppm | 80 句全部平移 | 167 s 逐采样一致；音效段被标记出来，用 `--keep-mv` 后保留了音效 |
 | B：从 1.5 s 开始，剪掉间奏 61–68 s | 两段 −1.5 / −8.5 s，剪辑点误差 10 ms | 80 句全部平移 | 两段除 20 ms 淡化外逐采样一致 |
 | C：剪掉人声段 20–25 s | 两段 0 / −5 s，剪辑点 20.00 / 25.00 s | 删除 2 句（整句被剪）+ 2 句（只剩 0.14 s），2 句从剪辑点开始 | 逐采样一致 |
+
+合成到 MKV（软字幕）和 MOV（硬字幕）之后，测试 A 的歌曲部分（167 s）在成片 PCM 音轨里仍与原始 24-bit WAV 逐采样一致。

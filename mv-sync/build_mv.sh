@@ -1,26 +1,29 @@
 #!/usr/bin/env bash
-# 合成最终 MV：原视频 + 字幕 + Hi-Res 音轨
+# 合成最终 MV：原视频 + 字幕 + 24-bit / 48 kHz PCM 音轨
 #
-# 用法：./build_mv.sh <MV 视频> <字幕.ass> <音轨.flac|-> <输出文件> [soft|hard]
-#   音轨写 "-" 表示保留 MV 原音轨（不移植）
+# 用法：./build_mv.sh <MV 视频> <字幕.ass> <音轨.wav|.flac|-> <输出文件.mkv|.mov> [soft|hard]
+#   音轨写 "-" 表示不移植 Hi-Res，把 MV 原音轨重采样到 48 kHz（soxr）后转成 24-bit PCM
+#   音轨统一输出为 PCM 24-bit / 48 kHz（MKV: A_PCM/INT/LIT，MOV: lpcm）；MP4 不支持 PCM，故不提供
 #   soft（默认）：MKV，视频流原样拷贝（画质零损失），ASS 字幕轨 + 附带字体，需播放器支持 ASS（mpv / MPC / PotPlayer 等）
-#   hard        ：字幕烧录进画面，视频重新编码（H.264 CRF 16，保留原分辨率/帧率/色彩参数/位深）
-#                 输出 .mkv 时音轨为 24-bit FLAC；输出 .mp4 时为 24-bit ALAC（Apple 设备友好）
+#   hard        ：字幕烧录进画面，视频重新编码（H.264 CRF 16，保留原分辨率/帧率/色彩参数/位深），输出 .mkv 或 .mov
 set -euo pipefail
 
 MV="$1"; ASS="$2"; AUDIO="$3"; OUT="$4"; MODE="${5:-soft}"
 FONT_DIR="${FONT_DIR:-$HOME/.fonts}"
 FONTS=("$FONT_DIR/SourceHanSansSC-Medium.otf" "$FONT_DIR/DreamHanSansJ-W16.ttf")
 
+case "$OUT" in
+  *.mkv|*.mov) ;;
+  *) echo "输出请用 .mkv 或 .mov（MP4 不支持 PCM 音轨）" >&2; exit 1 ;;
+esac
+
 if [ "$AUDIO" = "-" ]; then
-  AIN=(); AMAP=(-map 0:a:0); ACODEC=(-c:a copy)
+  AIN=(); AMAP=(-map 0:a:0)
 else
   AIN=(-i "$AUDIO"); AMAP=(-map 1:a:0)
-  case "$OUT" in
-    *.mp4|*.m4v|*.mov) ACODEC=(-c:a alac -sample_fmt s32p) ;;
-    *)                 ACODEC=(-c:a copy) ;;
-  esac
 fi
+# 已是 48 kHz 时 aresample 不做任何处理（逐采样直通）；44.1 kHz 等则用 soxr 高精度重采样
+ACODEC=(-af "aresample=48000:resampler=soxr:precision=28" -c:a pcm_s24le -ar 48000)
 
 if [ "$MODE" = "soft" ]; then
   case "$OUT" in *.mkv) ;; *) echo "soft 模式请输出 .mkv" >&2; exit 1 ;; esac
@@ -46,7 +49,7 @@ else
   ffmpeg -hide_banner -y -i "$MV" "${AIN[@]}" \
     -filter_complex "[0:v]ass='${ASS//\'/\\\'}'[v]" -map "[v]" "${AMAP[@]}" \
     -c:v libx264 -preset slow -crf 16 -pix_fmt "$PIXFMT" "${COLOR[@]}" \
-    "${ACODEC[@]}" $(case "$OUT" in *.mp4|*.m4v|*.mov) echo -movflags +faststart ;; esac) "$OUT"
+    "${ACODEC[@]}" $(case "$OUT" in *.mov) echo -movflags +faststart ;; esac) "$OUT"
 fi
 
 ffprobe -v error -show_entries stream=index,codec_type,codec_name,width,height,sample_rate,bits_per_raw_sample \
