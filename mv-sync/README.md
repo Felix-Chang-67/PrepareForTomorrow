@@ -37,7 +37,7 @@ python3 transplant_audio.py MV.mp4 song.wav align.json -o hires_mv.wav [--keep-m
 # 去黑边后再烧字幕：先查黑边，再把字幕画布高度改成裁切后的高度（字号/边距保持原像素大小）
 ffmpeg -i MV.mp4 -vf cropdetect=limit=24:round=2:reset=1 -f null - 2>&1 | grep -o "crop=[0-9:]*" | sort | uniq -c | sort -rn | head
 sed -i 's/^PlayResY: 2160$/PlayResY: 1600/' lyrics_mv.ass
-CROP=3840:1600:0:280 PRESET=medium CRF=18 ./build_mv.sh MV.mp4 lyrics_mv.ass hires_mv.wav MV_字幕.mov hard
+CROP=3840:1600:0:280 PRESET=medium BITRATE=100000 ./build_mv.sh MV.mp4 lyrics_mv.ass hires_mv.wav MV_字幕.mov hard
 ```
 
 ## 各步骤说明
@@ -65,7 +65,7 @@ CROP=3840:1600:0:280 PRESET=medium CRF=18 ./build_mv.sh MV.mp4 lyrics_mv.ass hir
 
 - **音轨**：一律输出 `pcm_s24le` 48 kHz。输入已经是 48 kHz 时不做任何处理，直接逐采样通过。
 - **soft 模式**：MKV，视频流原样拷贝，ASS 字幕轨附带两款字体。需要支持 ASS 的播放器，例如 mpv、MPC-HC、PotPlayer、IINA。
-- **hard 模式**：字幕烧录进画面，用 x264 重新编码（默认 slow / CRF 16，可用 `PRESET`、`CRF` 调整；固定开启 aq-mode 3，让暗部多分配码率、减少色带），保留原帧率、位深和色彩参数，可输出 MKV 或 MOV。设置 `CROP=w:h:x:y` 时，会先裁切再烧字幕。字幕是按 3840×2160 设计的（PlayRes 3840×2160），MV 是 1080p 等其他分辨率时，libass 会自动等比缩放。
+- **hard 模式**：字幕烧录进画面，用 x264 重新编码（默认 slow / CRF 16，可用 `PRESET`、`CRF` 调整；固定开启 aq-mode 3，让暗部多分配码率、减少色带），保留原帧率、位深和色彩参数，可输出 MKV 或 MOV。设置 `CROP=w:h:x:y` 时，会先裁切再烧字幕；设置 `BITRATE=kbps`（例如 `BITRATE=100000` 即 100 Mbps）时，改用两遍编码、按平均码率输出，峰值限制在 1.5 倍以内。字幕是按 3840×2160 设计的（PlayRes 3840×2160），MV 是 1080p 等其他分辨率时，libass 会自动等比缩放。
 
 ## 测试
 

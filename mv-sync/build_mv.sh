@@ -10,6 +10,7 @@
 # 环境变量（hard 模式）：
 #   CROP=w:h:x:y   先裁切（例如去黑边 CROP=3840:1600:0:280），再烧字幕；字幕的 PlayRes 应设为裁切后尺寸
 #   PRESET / CRF   x264 预设与质量，默认 slow / 16；另外固定开启 aq-mode 3（暗部多分配码率，减少色带）
+#   BITRATE=kbps   改用两遍编码、按平均码率输出（如 BITRATE=100000 即 100 Mbps），此时忽略 CRF
 set -euo pipefail
 
 MV="$1"; ASS="$2"; AUDIO="$3"; OUT="$4"; MODE="${5:-soft}"
@@ -63,10 +64,24 @@ else
   [ -n "${CRANGE:-}" ] && [ "$CRANGE" != "unknown" ] && COLOR+=(-color_range "$CRANGE")
   VF="ass='${ASS//\'/\\\'}'"
   [ -n "${CROP:-}" ] && VF="crop=${CROP},${VF}"
-  ffmpeg -hide_banner -y -i "$MV" "${AIN[@]}" \
-    -filter_complex "[0:v]${VF}[v]" -map "[v]" "${AMAP[@]}" \
-    -c:v libx264 -preset "${PRESET:-slow}" -crf "${CRF:-16}" -aq-mode 3 -pix_fmt "$PIXFMT" "${COLOR[@]}" \
-    "${ACODEC[@]}" $(case "$OUT" in *.mov) echo -movflags +faststart ;; esac) "$OUT"
+  VENC=(-c:v libx264 -preset "${PRESET:-slow}" -aq-mode 3 -pix_fmt "$PIXFMT" "${COLOR[@]}")
+  MOVFLAGS=($(case "$OUT" in *.mov) echo -movflags +faststart ;; esac))
+  if [ -n "${BITRATE:-}" ]; then
+    # 两遍编码：平均码率 = BITRATE（kbps），峰值限制在 1.5 倍（H.264 High@5.1 上限 300 Mbps 以内）
+    PASSDIR="$(mktemp -d)"
+    RC=(-b:v "${BITRATE}k" -maxrate "$(( BITRATE * 3 / 2 ))k" -bufsize "$(( BITRATE * 3 / 2 ))k")
+    echo "== 第一遍（分析）" >&2
+    ffmpeg -hide_banner -y -i "$MV" -filter_complex "[0:v]${VF}[v]" -map "[v]" \
+      "${VENC[@]}" "${RC[@]}" -pass 1 -passlogfile "$PASSDIR/x264" -an -f null /dev/null
+    echo "== 第二遍（输出）" >&2
+    ffmpeg -hide_banner -y -i "$MV" "${AIN[@]}" -filter_complex "[0:v]${VF}[v]" -map "[v]" "${AMAP[@]}" \
+      "${VENC[@]}" "${RC[@]}" -pass 2 -passlogfile "$PASSDIR/x264" \
+      "${ACODEC[@]}" "${MOVFLAGS[@]}" "$OUT"
+    rm -rf "$PASSDIR"
+  else
+    ffmpeg -hide_banner -y -i "$MV" "${AIN[@]}" -filter_complex "[0:v]${VF}[v]" -map "[v]" "${AMAP[@]}" \
+      "${VENC[@]}" -crf "${CRF:-16}" "${ACODEC[@]}" "${MOVFLAGS[@]}" "$OUT"
+  fi
 fi
 
 ffprobe -v error -show_entries stream=index,codec_type,codec_name,width,height,sample_rate,bits_per_raw_sample \
